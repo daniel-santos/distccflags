@@ -1,0 +1,97 @@
+#!/bin/bash
+#
+# distccflags -- extrapolate gcc machine flags for use with distcc
+# Copyright (C) 2017  Daniel Santos <daniel.santos@pobox.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+CC="${CC:-$(which gcc)}"
+
+die() {
+    echo -e "ERROR: $@" >&2
+    exit -1
+}
+
+usage() {
+    (($#)) && echo -e "ERROR: $@\n" >&2
+    cat << asdf >&2
+USAGE: [CC=/my/compiler] $0 \$CFLAGS
+
+Your most likely use case is:
+    $0 -march=native
+
+Requires one of:
+    GCC 6 that is > 6.4.0
+    GCC 7 that is > 7.2.0
+    GCC 8+
+asdf
+    exit -1
+}
+
+$CC "$@" -x c -E -o /dev/null /dev/null || usage "Test compile failed:\n    $CC $* -x c -E -o /dev/null /dev/null"
+
+# Need gcc 6 that is > 6.4.0, or gcc 7 > 7.2.0 or gcc8+
+is_fixed=$($CC -x c -E -o - <(cat << EOF
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 +  __GNUC_PATCHLEVEL__)
+#if (GCC_VERSION > 60400 && GCC_VERSION < 70000) || GCC_VERSION > 70200
+yes
+#else
+no
+#endif
+EOF
+) | tail -1 )
+
+if [[ "x$is_fixed" != "xyes" ]]; then
+    usage "Sorry, compiler CC=\"$CC\" does not have the neeed bugfixes to use this script."
+fi
+
+get_arch() {
+    $CC -Q --help=target "$@" |
+    egrep '\s*-march=' |
+    awk '{print $2}'
+}
+
+gitem() {
+    $CC -Q --help=target "$@" |
+    egrep '^\s+-m' |
+    egrep -v '=\s*(\[default\]|)$' |
+    perl -pe '
+	s/^\s+-mno-([\w-\.]+)\s+\[enabled\]/$1 no/g;
+	s/^\s+-mno-([\w-\.]+)\s+\[disabled\]/$1/g;
+	s/^\s+-m([\w-\.]+)\s+\[enabled\]/$1/g;
+	s/^\s+-m([\w-\.]+)\s+\[disabled\]/$1 no/g;
+	s/^\s+-m([\w-\.]+)=\S*\s+(.*)$/$1=$2/g;
+	s/^\s+-m([\w-\.]+)\s*$//g;
+    ' | sort -u
+}
+
+arch=$(get_arch "$@")
+generic=$(gitem -march=$arch)
+native=$(gitem "$@")
+
+needed=$(
+    diff -u0 <(echo "$generic") <(echo "$native") |
+    grep '^\+' |
+    grep -v 'arch=' |
+    perl -pe '
+	s/^\+\+\+.*$//g;
+	s/^\+(\S+) no$/-mno-$1/g;
+	s/^\+(\S+)$/-m$1/g;
+    ' |
+    perl -pe 's/\s+/ /g;' |
+    perl -pe 's/\s+$//g;'
+)
+
+echo "CFLAGS=\"-march=${arch}${needed}\""
