@@ -19,6 +19,10 @@
 
 CC="${CC:-$(type -P gcc)}"
 
+# Force C locale as the script relies on English
+# representation of '[enabled]' / '[disabled]'.
+export LC_MESSAGES=C
+
 die() {
     echo -e "ERROR: $@" >&2
     exit -1
