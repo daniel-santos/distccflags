@@ -59,7 +59,7 @@ fi
 
 get_arch() {
     $CC -Q --help=target "$@" |
-    egrep '\s*-march=' |
+    egrep '^\s*-march=' |
     awk '{print $2}'
 }
 
