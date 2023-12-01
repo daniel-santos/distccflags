@@ -59,14 +59,14 @@ fi
 
 get_arch() {
     $CC -Q --help=target "$@" |
-    egrep '\s*-march=' |
+    grep -E '^\s*-march=' |
     awk '{print $2}'
 }
 
 gitem() {
     $CC -Q --help=target "$@" |
-    egrep '^\s+-m' |
-    egrep -v '=\s*(\[default\]|)$' |
+    grep -E '^\s+-m' |
+    grep -E -v '=\s*(\[default\]|)$' |
     perl -pe '
 	s/^\s+-mno-([\w-\.]+)\s+\[enabled\]/$1 no/g;
 	s/^\s+-mno-([\w-\.]+)\s+\[disabled\]/$1/g;
@@ -83,7 +83,7 @@ native=$(gitem "$@")
 
 needed=$(
     diff -u0 <(echo "$generic") <(echo "$native") |
-    grep '^\+' |
+    grep '^+' |
     grep -v 'arch=' |
     perl -pe '
 	s/^\+\+\+.*$//g;
